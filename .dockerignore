@@ -1,0 +1,56 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Editor and OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Test and build artifacts
+tests/
+dist/
+build/
+*.egg-info/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Logs and databases
+*.log
+*.sqlite3
+backend/logs/
+
+# Environment files (do NOT include secrets in the image)
+.env
+.env.*
+
+# Packaging
+pip-wheel-metadata/
+
+# Docker and compose local overrides
+docker-compose.yml
+
+# Coverage and typing caches
+.coverage
+.mypy_cache/
+
+# Misc
+*.pem
+*.key
+
+# Ignore node modules if present
+node_modules/
