@@ -72,7 +72,7 @@ export function FeatureImportanceChart() {
               color: 'var(--color-text-primary)',
               fontSize: 12,
             }}
-            formatter={(v: number) => [(v * 100).toFixed(1) + '%', 'importance']}
+            formatter={(v: number) => [v.toFixed(1) + '%', 'importance']}
           />
           <Bar dataKey="importance" radius={[0, 4, 4, 0]}>
             {data.map((_, i) => (

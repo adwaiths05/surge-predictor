@@ -228,19 +228,23 @@ def model_metadata() -> ModelMetadataResponse:
 
 @app.get("/model/features", response_model=ModelFeaturesResponse)
 def model_features() -> ModelFeaturesResponse:
-    top = [
-        {"feature": "traffic_flow_ratio", "importance": 0.21},
-        {"feature": "demand_growth_rate", "importance": 0.17},
-        {"feature": "is_rush_hour", "importance": 0.11},
-        {"feature": "rain_congestion", "importance": 0.10},
-        {"feature": "temperature", "importance": 0.09},
-        {"feature": "hour_of_day", "importance": 0.08},
-        {"feature": "zone_name", "importance": 0.07},
-        {"feature": "is_holiday", "importance": 0.06},
-        {"feature": "extreme_temp", "importance": 0.06},
-        {"feature": "wind_speed", "importance": 0.05},
-    ]
-    return ModelFeaturesResponse(top_features=top)
+    import json
+    from pathlib import Path
+    try:
+        path = Path(__file__).parent.parent / "artifacts" / "feature_importance.json"
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        top = [
+            {
+                "feature": item["feature"],
+                "importance": float(item["importance_pct"])
+            }
+            for item in data.get("top_features", [])
+        ]
+        return ModelFeaturesResponse(top_features=top)
+    except Exception as e:
+        logger.error(f"Failed to load feature importance: {e}")
+        return ModelFeaturesResponse(top_features=[])
 
 
 @app.get("/drift/summary", response_model=DriftSummaryResponse)

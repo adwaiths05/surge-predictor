@@ -1,0 +1,44 @@
+{
+  "top_features": [
+    {
+      "feature": "zone_id",
+      "importance_pct": 19.35
+    },
+    {
+      "feature": "hour_of_day",
+      "importance_pct": 16.79
+    },
+    {
+      "feature": "zone_name",
+      "importance_pct": 10.76
+    },
+    {
+      "feature": "day_of_week",
+      "importance_pct": 10.15
+    },
+    {
+      "feature": "congestion_ratio",
+      "importance_pct": 7.46
+    },
+    {
+      "feature": "temperature",
+      "importance_pct": 6.82
+    },
+    {
+      "feature": "demand_growth_rate",
+      "importance_pct": 6.23
+    },
+    {
+      "feature": "temp_congestion",
+      "importance_pct": 5.46
+    },
+    {
+      "feature": "wind_speed",
+      "importance_pct": 4.69
+    },
+    {
+      "feature": "borough",
+      "importance_pct": 3.67
+    }
+  ]
+}

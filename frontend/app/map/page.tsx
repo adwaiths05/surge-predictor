@@ -56,10 +56,10 @@ const ZONES: Record<string, { lat: number; lng: number; borough: string }> = {
 }
 
 /* ─── map styles ─────────────────────────────────────────────── */
-// Free CARTO tile styles — no token required
+// Free OpenFreeMap tile styles — no token required
 const MAP_STYLES = {
-  dark:  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-  light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  dark:  'https://tiles.openfreemap.org/styles/dark',
+  light: 'https://tiles.openfreemap.org/styles/positron',
 }
 
 /* ─── subcomponents ─────────────────────────────────────────── */
