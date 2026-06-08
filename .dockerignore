@@ -54,3 +54,6 @@ docker-compose.yml
 
 # Ignore node modules if present
 node_modules/
+
+#Frontend
+frontend/

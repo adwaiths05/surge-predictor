@@ -31,9 +31,9 @@ class Settings:
 
     request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
     request_retries: int = int(os.getenv("REQUEST_RETRIES", "2"))
-    weather_cache_ttl_seconds: int = int(os.getenv("WEATHER_CACHE_TTL_SECONDS", "300"))
-    traffic_cache_ttl_seconds: int = int(os.getenv("TRAFFIC_CACHE_TTL_SECONDS", "120"))
-    holiday_cache_ttl_seconds: int = int(os.getenv("HOLIDAY_CACHE_TTL_SECONDS", "86400"))
+    weather_cache_ttl_seconds: int = int(os.getenv("WEATHER_CACHE_TTL_SECONDS", "3600"))   # 1 hour
+    traffic_cache_ttl_seconds: int = int(os.getenv("TRAFFIC_CACHE_TTL_SECONDS", "10800"))  # 3 hours
+    holiday_cache_ttl_seconds: int = int(os.getenv("HOLIDAY_CACHE_TTL_SECONDS", "86400"))  # 1 day
     # Optional: how the training target was transformed. Supported: none, log1p, log
     target_transform: str = os.getenv("TARGET_TRANSFORM", "none")
 

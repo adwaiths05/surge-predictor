@@ -7,6 +7,7 @@ import time
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 
 from backend.config import settings
 from backend.predict import init_prediction_runtime, predict_surge, runtime_readiness
@@ -132,21 +133,69 @@ async def predict_route(payload: PredictRequest, request: Request) -> PredictRes
         raise HTTPException(status_code=500, detail="Internal inference error") from exc
 
 
+# The 21 zones to include in the public heatmap
+_HEATMAP_ZONES = [
+    "Central Park",
+    "Clinton East",
+    "Clinton West",
+    "Chinatown",
+    "Battery Park City",
+    "Alphabet City",
+    "Central Harlem",
+    "Brooklyn Heights",
+    "Bushwick North",
+    "Bushwick South",
+    "Bedford",
+    "Boerum Hill",
+    "Astoria",
+    "Astoria Park",
+    "Baisley Park",
+    "Briarwood/Jamaica Hills",
+    "Bayside",
+    "Bedford Park",
+    "Belmont",
+    "Newark Airport",
+    "Jamaica Bay",
+]
+
+
 @app.get("/map/heatmap", response_model=HeatmapResponse)
-def map_heatmap() -> HeatmapResponse:
+async def map_heatmap(request: Request) -> HeatmapResponse:
+    """
+    Run live batch inference for all 21 heatmap zones concurrently.
+    Results are cached at the individual API level (weather/traffic/holiday).
+    """
+    client = _http_client_from_request(request)
     points = []
-    for zone_name, zone in ZONE_DATA.items():
-        # Deterministic placeholder until dynamic batch inference is wired.
-        base = 1.0 + ((abs(hash(zone_name)) % 120) / 100.0)
-        points.append(
-            {
+
+    async def _predict_zone(zone_name: str) -> dict | None:
+        try:
+            result = await predict_surge(zone_name, client)
+            zone = ZONE_DATA[zone_name]
+            return {
                 "zone_name": zone_name,
-                "borough": zone["borough"],
+                "borough": result["borough"],
                 "lat": zone["lat"],
                 "lon": zone["lon"],
-                "surge_multiplier": round(base, 2),
+                "surge_multiplier": round(result["surge_multiplier"], 4),
             }
-        )
+        except Exception as exc:
+            logger.warning("Heatmap inference failed for zone %s: %s", zone_name, exc)
+            # Fallback: use deterministic placeholder so map stays populated
+            zone = ZONE_DATA.get(zone_name)
+            if zone:
+                base = 1.0 + ((abs(hash(zone_name)) % 80) / 100.0)
+                return {
+                    "zone_name": zone_name,
+                    "borough": zone["borough"],
+                    "lat": zone["lat"],
+                    "lon": zone["lon"],
+                    "surge_multiplier": round(base, 2),
+                }
+            return None
+
+    results = await asyncio.gather(*[_predict_zone(z) for z in _HEATMAP_ZONES])
+    points = [r for r in results if r is not None]
 
     return HeatmapResponse(generated_at=datetime.now().isoformat(), points=points)
 

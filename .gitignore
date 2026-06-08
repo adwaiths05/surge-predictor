@@ -26,4 +26,38 @@ build/
 dist/
 *.egg-info/
 
+# Node / Next
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+
+# Coverage and reports
+coverage/
+htmlcov/
+nosetests.xml
+coverage.xml
+
+# IDEs and editors
+.idea/
+.vscode/
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
 

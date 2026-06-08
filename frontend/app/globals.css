@@ -1,0 +1,399 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+:root,
+.light {
+  /* Light Theme */
+  --background: #F8FAFC;
+  --foreground: #0F172A;
+  --card: #FFFFFF;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F1F5F9;
+  --secondary-foreground: #0F172A;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #3B82F6;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #E2E8F0;
+  --input: #F1F5F9;
+  --ring: #3B82F6;
+
+  /* Light Theme Custom Colors */
+  --surface: #FFFFFF;
+  --surface-elevated: #F1F5F9;
+  --border-subtle: #E2E8F0;
+  --text-primary: #0F172A;
+  --text-secondary: #64748B;
+  --accent-blue: #3B82F6;
+  --surge-low: #0891B2;
+  --surge-medium: #D97706;
+  --surge-high: #DC2626;
+  --success: #059669;
+  --warning: #D97706;
+
+  /* Charts */
+  --chart-1: #3B82F6;
+  --chart-2: #0891B2;
+  --chart-3: #059669;
+  --chart-4: #D97706;
+  --chart-5: #DC2626;
+
+  /* Neon Glow Colors */
+  --neon-blue: rgba(59, 130, 246, 0.5);
+  --neon-cyan: rgba(34, 211, 238, 0.5);
+  --neon-purple: rgba(139, 92, 246, 0.5);
+  --neon-green: rgba(16, 185, 129, 0.5);
+
+  --radius: 0.75rem;
+
+  /* Sidebar */
+  --sidebar: #F8FAFC;
+  --sidebar-foreground: #0F172A;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F1F5F9;
+  --sidebar-accent-foreground: #0F172A;
+  --sidebar-border: #E2E8F0;
+  --sidebar-ring: #3B82F6;
+}
+
+.dark {
+  /* Dark Theme */
+  --background: #0A0F1E;
+  --foreground: #F9FAFB;
+  --card: #111827;
+  --card-foreground: #F9FAFB;
+  --popover: #111827;
+  --popover-foreground: #F9FAFB;
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --secondary: #1F2937;
+  --secondary-foreground: #F9FAFB;
+  --muted: #1F2937;
+  --muted-foreground: #9CA3AF;
+  --accent: #3B82F6;
+  --accent-foreground: #FFFFFF;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --border: #374151;
+  --input: #1F2937;
+  --ring: #3B82F6;
+
+  /* Dark Theme Custom Colors */
+  --surface: #111827;
+  --surface-elevated: #1F2937;
+  --border-subtle: #374151;
+  --text-primary: #F9FAFB;
+  --text-secondary: #9CA3AF;
+  --accent-blue: #3B82F6;
+  --surge-low: #22D3EE;
+  --surge-medium: #FBBF24;
+  --surge-high: #EF4444;
+  --success: #10B981;
+  --warning: #F59E0B;
+
+  /* Charts */
+  --chart-1: #3B82F6;
+  --chart-2: #22D3EE;
+  --chart-3: #10B981;
+  --chart-4: #FBBF24;
+  --chart-5: #EF4444;
+
+  /* Neon Glow Colors - Brighter for dark mode */
+  --neon-blue: rgba(59, 130, 246, 0.6);
+  --neon-cyan: rgba(34, 211, 238, 0.6);
+  --neon-purple: rgba(139, 92, 246, 0.6);
+  --neon-green: rgba(16, 185, 129, 0.6);
+
+  /* Sidebar */
+  --sidebar: #0A0F1E;
+  --sidebar-foreground: #F9FAFB;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #1F2937;
+  --sidebar-accent-foreground: #F9FAFB;
+  --sidebar-border: #374151;
+  --sidebar-ring: #3B82F6;
+}
+
+@theme inline {
+  --font-sans: 'Inter', 'Inter Fallback', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* SurgeCast Custom Tokens */
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-border-subtle: var(--border-subtle);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-accent-blue: var(--accent-blue);
+  --color-surge-low: var(--surge-low);
+  --color-surge-medium: var(--surge-medium);
+  --color-surge-high: var(--surge-high);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Neon Glow Effects */
+.neon-glow {
+  box-shadow: 
+    0 0 5px var(--neon-blue),
+    0 0 10px var(--neon-blue),
+    0 0 20px var(--neon-blue);
+}
+
+.neon-glow-cyan {
+  box-shadow: 
+    0 0 5px var(--neon-cyan),
+    0 0 10px var(--neon-cyan),
+    0 0 20px var(--neon-cyan);
+}
+
+.neon-glow-purple {
+  box-shadow: 
+    0 0 5px var(--neon-purple),
+    0 0 10px var(--neon-purple),
+    0 0 20px var(--neon-purple);
+}
+
+.neon-glow-green {
+  box-shadow: 
+    0 0 5px var(--neon-green),
+    0 0 10px var(--neon-green),
+    0 0 20px var(--neon-green);
+}
+
+.neon-text {
+  text-shadow: 
+    0 0 5px var(--neon-blue),
+    0 0 10px var(--neon-blue),
+    0 0 20px var(--neon-blue);
+}
+
+.neon-text-cyan {
+  text-shadow: 
+    0 0 5px var(--neon-cyan),
+    0 0 10px var(--neon-cyan),
+    0 0 20px var(--neon-cyan);
+}
+
+.neon-border {
+  border-color: var(--accent-blue);
+  box-shadow: 
+    0 0 5px var(--neon-blue),
+    inset 0 0 5px var(--neon-blue);
+}
+
+.neon-border-subtle {
+  box-shadow: 0 0 10px var(--neon-blue);
+}
+
+/* Pulse animation for neon */
+@keyframes neon-pulse {
+  0%, 100% {
+    box-shadow: 
+      0 0 5px var(--neon-blue),
+      0 0 10px var(--neon-blue),
+      0 0 20px var(--neon-blue);
+  }
+  50% {
+    box-shadow: 
+      0 0 10px var(--neon-blue),
+      0 0 20px var(--neon-blue),
+      0 0 40px var(--neon-blue);
+  }
+}
+
+.neon-pulse {
+  animation: neon-pulse 2s ease-in-out infinite;
+}
+
+/* Gradient border with glow */
+.gradient-border {
+  position: relative;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--radius) + 1px);
+  background: linear-gradient(135deg, var(--accent-blue), var(--neon-cyan), var(--neon-purple));
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.gradient-border:hover::before {
+  opacity: 1;
+}
+
+/* Card hover glow */
+.card-glow {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.card-glow:hover {
+  box-shadow: 
+    0 0 20px var(--neon-blue),
+    0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px);
+}
+
+/* MapLibre / react-map-gl overrides */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.maplibregl-ctrl-logo,
+.maplibregl-ctrl-attrib {
+  display: none !important;
+}
+
+/* Popup styling — matches our design tokens */
+.maplibregl-popup-content,
+.mapboxgl-popup-content {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  padding: 0 !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3) !important;
+  color: var(--text-primary) !important;
+}
+
+.maplibregl-popup-tip,
+.mapboxgl-popup-tip {
+  border-top-color: var(--surface) !important;
+  border-bottom-color: var(--surface) !important;
+}
+
+.maplibregl-popup-close-button,
+.mapboxgl-popup-close-button {
+  display: none !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Tabular numbers for KPI */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shimmer animation for loading states */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--surface-elevated) 25%,
+    var(--border-subtle) 50%,
+    var(--surface-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* Float animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Glow ring animation */
+@keyframes glow-ring {
+  0%, 100% {
+    box-shadow: 0 0 0 0 var(--neon-blue);
+  }
+  50% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+.glow-ring {
+  animation: glow-ring 2s ease-in-out infinite;
+}
