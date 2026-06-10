@@ -76,13 +76,15 @@ jobs:
       - name: Generate pseudo-labels and build retraining dataset
         id: pseudo_label
         run: |
-          # Run pseudo_label.py and capture its output
+          set +e
           OUTPUT=$(python -m training.pseudo_label 2>&1)
+          EXIT_CODE=$?
           echo "$OUTPUT"
-          # Extract the machine-readable timestamp line: PSEUDO_LABEL_LATEST_TS=<value>
+
           LATEST_TS=$(echo "$OUTPUT" | grep -oP 'PSEUDO_LABEL_LATEST_TS=\K.*' | tail -1)
           echo "pseudo_label_latest_ts=${LATEST_TS}" >> "$GITHUB_OUTPUT"
-          echo "Captured latest log timestamp: ${LATEST_TS}"
+
+          exit $EXIT_CODE
         # This reads:
         #   artifacts/model_metadata.json  → champion RMSE (pseudo_label_std)
         #                                    + last_processed_log_timestamp (cutoff)
