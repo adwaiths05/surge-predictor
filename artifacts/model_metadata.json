@@ -6,6 +6,7 @@
   "r2": 0.6196057137759148,
   "pseudo_label_std": 0.13470562799274285,
   "timestamp": "2026-06-09T00:00:00",
+  "last_processed_log_timestamp": null,
   "drift_triggered": false,
   "status": "champion"
 }

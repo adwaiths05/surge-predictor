@@ -11,7 +11,8 @@
 #   3. Run training/promotion.py (replaces model.pkl, updates metadata)
 #   4. Commit updated champion artifacts to the repository
 #   5. Create a git tag model-vN for traceability
-#   6. Azure ML registration happens inside promotion.py (if credentials set)
+#   NOTE: Azure ML registration is NOT automatic — promotion.py logs a manual
+#         registration reminder instead.
 #
 # TRIGGERED BY:
 #   - retrain.yml (automatic, when challenger wins evaluation)
@@ -20,9 +21,6 @@
 # REQUIRED SECRETS:
 #   GITHUB_TOKEN  — auto-provided, used for push and tag
 #   GH_PAT        — optional, needed if default token lacks push permission
-#   AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_ML_WORKSPACE_NAME,
-#   AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET  — optional,
-#   only needed if Azure ML registration is desired.
 
 name: Promote Challenger to Champion
 
@@ -32,6 +30,11 @@ on:
       retrain_run_id:
         description: "Run ID of the retrain workflow that produced the challenger"
         required: true
+        type: string
+      pseudo_label_latest_ts:
+        description: "Newest log timestamp consumed by pseudo_label.py this cycle (ISO-8601 or 'null')"
+        required: false
+        default: "null"
         type: string
 
 jobs:
@@ -114,19 +117,17 @@ jobs:
       - name: Promote challenger to champion
         run: python -m training.promotion
         env:
-          # Azure ML credentials (no-op if not set)
-          AZURE_SUBSCRIPTION_ID:    ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          AZURE_RESOURCE_GROUP:     ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_ML_WORKSPACE_NAME:  ${{ secrets.AZURE_ML_WORKSPACE_NAME }}
-          AZURE_TENANT_ID:          ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID:          ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET:      ${{ secrets.AZURE_CLIENT_SECRET }}
+          # Timestamp of the newest production log record consumed this cycle.
+          # promotion.py reads this and stores it in model_metadata.json so the
+          # next retraining cycle skips records at or before this timestamp.
+          PSEUDO_LABEL_LATEST_TS: ${{ inputs.pseudo_label_latest_ts }}
         # promotion.py performs:
         #   - Copies challenger_model.pkl → model.pkl
         #   - Copies challenger_feature_importance.json → feature_importance.json
         #   - Increments version, updates model_metadata.json
         #   - Sets pseudo_label_std = challenger RMSE (for next retraining cycle)
-        #   - Calls Azure ML register_model() and register_data_asset()
+        #   - Sets last_processed_log_timestamp = PSEUDO_LABEL_LATEST_TS
+        #   - Prints "Manual Azure registration required." (no automatic cloud call)
 
       # ------------------------------------------------------------------
       # Read the new version number for tagging
@@ -174,7 +175,7 @@ jobs:
 
           git push origin main
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ------------------------------------------------------------------
       # Create version tag for traceability
@@ -186,7 +187,7 @@ jobs:
           git tag -a "$TAG" -m "SurgeCast champion model ${VERSION} — RMSE=${{ steps.new_version.outputs.rmse }}"
           git push origin "$TAG"
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ------------------------------------------------------------------
       # Summary

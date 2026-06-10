@@ -67,6 +67,7 @@ DRIFT_HISTORY_PATH = BASE_DIR / "artifacts" / "drift_history.json"
 # ---------------------------------------------------------------------------
 PSI_THRESHOLD = 0.25
 PSI_BINS = 10
+MIN_LOGS_FOR_DRIFT = 1000  # minimum production records required for reliable drift detection
 
 # Continuous features to monitor for drift.
 # These are the features most likely to exhibit covariate shift in production
@@ -269,6 +270,35 @@ def detect_drift(
 
     production_records = _load_production_logs(log_path)
     n_prod = len(production_records)
+
+    # --- Minimum log guard ---
+    # Drift statistics (PSI, KS) are unreliable below a minimum sample size.
+    # Requiring MIN_LOGS_FOR_DRIFT records ensures we only act on statistically
+    # significant signals, not noise from sparse early traffic.
+    if n_prod < MIN_LOGS_FOR_DRIFT:
+        print(
+            f"Insufficient logs for drift detection: "
+            f"{n_prod} records found, {MIN_LOGS_FOR_DRIFT} required."
+        )
+        logger.info(
+            "Insufficient logs for drift detection (%d/%d). "
+            "Exiting with no-drift status.",
+            n_prod, MIN_LOGS_FOR_DRIFT,
+        )
+        report: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "n_production_records": n_prod,
+            "psi_scores": {},
+            "ks_scores": {},
+            "overall_drift_score": 0.0,
+            "drift_detected": False,
+            "psi_threshold": PSI_THRESHOLD,
+            "skipped_reason": f"insufficient_logs ({n_prod} < {MIN_LOGS_FOR_DRIFT})",
+        }
+        history = _load_drift_history(history_path)
+        history.append(report)
+        _save_drift_history(history, history_path)
+        return report
 
     psi_scores: dict[str, float] = {}
     ks_scores: dict[str, dict[str, float]] = {}

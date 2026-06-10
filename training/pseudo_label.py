@@ -28,6 +28,24 @@ IMPORTANT: We do NOT use the raw prediction as the label directly.
   - The noise breaks this degeneracy and approximates the residual uncertainty
     around each prediction.
 
+RECORD DEDUPLICATION (last_processed_log_timestamp):
+------------------------------------------------------
+Each retraining cycle must only consume NEW production log records — those
+written AFTER the last successful promotion.  Without this guard, every cycle
+re-processes the same records, causing duplicate learning and unbounded dataset
+growth.
+
+The cutoff timestamp is read from model_metadata.json:
+  - On first run (bootstrap): null → process ALL existing logs.
+  - After each promotion: set to the newest log timestamp consumed.
+  - Next cycle: only records with timestamp > last_processed_log_timestamp
+    are processed.
+
+_load_production_records() accepts an optional cutoff and applies this filter.
+generate_pseudo_labels() returns (pseudo_df, latest_timestamp_processed).
+main() prints "latest_timestamp_processed=<value>" so the promote workflow
+can capture it via shell and persist it back to model_metadata.json.
+
 RETRAINING DATASET CONSTRUCTION:
 ---------------------------------
     retraining_dataset.parquet = surgecast_training.parquet
@@ -51,6 +69,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -67,7 +86,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 LOG_PATH = BASE_DIR / "logs" / "predictions.jsonl"
-TRAINING_DATA_PATH = BASE_DIR / "data" / "surgecast_training.parquet"
+
+TRAINING_DATASET_PATH = Path(
+    os.getenv(
+        "TRAINING_DATASET_PATH",
+        str(BASE_DIR / "data" / "surgecast_training.parquet"),
+    )
+)
+TRAINING_DATA_PATH = TRAINING_DATASET_PATH  # alias used internally
 RETRAINING_DATA_PATH = BASE_DIR / "data" / "retraining_dataset.parquet"
 
 # ---------------------------------------------------------------------------
@@ -108,14 +134,33 @@ _CONGESTION_ALIASES = {"congestion_ratio", "traffic_flow_ratio"}
 # Log loading
 # ---------------------------------------------------------------------------
 
-def _load_production_records(path: Path = LOG_PATH) -> list[dict[str, Any]]:
+def _load_production_records(
+    path: Path = LOG_PATH,
+    after_timestamp: str | None = None,
+) -> tuple[list[dict[str, Any]], str | None]:
     """
     Load records from logs/predictions.jsonl.
 
     Each record must have the shape:
         { "features": {...}, "prediction": float, "timestamp": "..." }
 
-    Returns an empty list if the file is missing or empty.
+    Args:
+        path:             Path to the JSONL log file.
+        after_timestamp:  ISO-8601 string.  When provided, only records whose
+                          ``timestamp`` field is strictly GREATER THAN this
+                          value are returned.  Pass None to process all records
+                          (first-run / bootstrap behaviour).
+
+    Returns:
+        (records, latest_timestamp) where:
+          - records is the list of accepted log dicts.
+          - latest_timestamp is the maximum timestamp string seen across all
+            accepted records, or None if no records were accepted.
+
+        Records without a ``timestamp`` field are accepted (they cannot be
+        filtered by time) but do not contribute to latest_timestamp.
+
+    Returns ([], None) if the file is missing or empty.
     """
     if not path.exists():
         logger.warning(
@@ -123,9 +168,12 @@ def _load_production_records(path: Path = LOG_PATH) -> list[dict[str, Any]]:
             "Returning empty — no pseudo-labeled rows will be added.",
             path,
         )
-        return []
+        return [], None
 
     records: list[dict[str, Any]] = []
+    latest_ts: str | None = None
+    skipped_old = 0
+
     with path.open("r", encoding="utf-8") as fh:
         for lineno, line in enumerate(fh, start=1):
             line = line.strip()
@@ -133,15 +181,38 @@ def _load_production_records(path: Path = LOG_PATH) -> list[dict[str, Any]]:
                 continue
             try:
                 rec = json.loads(line)
-                if "features" in rec and "prediction" in rec:
-                    records.append(rec)
-                else:
+                if "features" not in rec or "prediction" not in rec:
                     logger.debug("Line %d skipped (missing features or prediction).", lineno)
+                    continue
+
+                rec_ts: str | None = rec.get("timestamp")
+
+                # Apply cutoff filter when a cutoff is supplied and the record
+                # has a timestamp.  Records without a timestamp are always
+                # included (conservative: don't silently discard them).
+                if after_timestamp is not None and rec_ts is not None:
+                    if rec_ts <= after_timestamp:
+                        skipped_old += 1
+                        continue
+
+                records.append(rec)
+
+                # Track the newest timestamp seen among accepted records
+                if rec_ts is not None:
+                    if latest_ts is None or rec_ts > latest_ts:
+                        latest_ts = rec_ts
+
             except json.JSONDecodeError as exc:
                 logger.warning("Malformed JSONL at line %d: %s", lineno, exc)
 
-    logger.info("Loaded %d valid production records from %s.", len(records), path)
-    return records
+    if skipped_old:
+        logger.info(
+            "Skipped %d already-processed log records (timestamp <= '%s').",
+            skipped_old, after_timestamp,
+        )
+    logger.info("Loaded %d new production records from %s.", len(records), path)
+    return records, latest_ts
+
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +300,7 @@ def generate_pseudo_labels(
     return df
 
 
+
 # ---------------------------------------------------------------------------
 # Dataset merge and save
 # ---------------------------------------------------------------------------
@@ -296,18 +368,19 @@ def build_retraining_dataset(
 def main() -> None:
     """
     Full pseudo-label generation pipeline:
-      1. Read current champion RMSE from model_metadata.json
-      2. Load production records from logs/predictions.jsonl
+      1. Read current champion RMSE and last_processed_log_timestamp from model_metadata.json
+      2. Load ONLY NEW production records (timestamp > last_processed_log_timestamp)
       3. Generate pseudo-labeled rows (prediction + N(0, RMSE))
       4. Merge with surgecast_training.parquet
       5. Save data/retraining_dataset.parquet
+      6. Print latest_timestamp_processed so the promote workflow can persist it
     """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     )
 
-    # Step 1: Read RMSE from champion metadata
+    # Step 1: Read RMSE and timestamp cutoff from champion metadata
     logger.info("Reading champion metadata from %s …", CHAMPION_METADATA_PATH)
     try:
         meta = load_metadata(CHAMPION_METADATA_PATH)
@@ -318,13 +391,19 @@ def main() -> None:
         sys.exit(1)
 
     current_rmse = float(meta["pseudo_label_std"])
+    cutoff_ts: str | None = meta.get("last_processed_log_timestamp")  # None on first run
+
     logger.info(
         "Champion: version=%s  RMSE=%.6f  pseudo_label_std=%.6f",
         meta["version"], meta["rmse"], current_rmse,
     )
+    if cutoff_ts is None:
+        logger.info("last_processed_log_timestamp=null — processing ALL log records (first run).")
+    else:
+        logger.info("last_processed_log_timestamp='%s' — only processing newer records.", cutoff_ts)
 
-    # Step 2: Load production records
-    records = _load_production_records(LOG_PATH)
+    # Step 2: Load only NEW production records (after cutoff)
+    records, latest_ts = _load_production_records(LOG_PATH, after_timestamp=cutoff_ts)
 
     # Step 3: Generate pseudo-labels
     # Noise std = current champion RMSE — calibrated to the model's own error distribution.
@@ -334,13 +413,20 @@ def main() -> None:
     combined = build_retraining_dataset(pseudo_df)
 
     print("\n-- Pseudo-Label Summary --")
+    print(f"  Last processed timestamp  : {cutoff_ts or 'null (first run)'}")
     print(f"  Production records loaded : {len(records)}")
     print(f"  Pseudo-labeled rows added : {len(pseudo_df)}")
     print(f"  Noise std (champion RMSE) : {current_rmse:.6f}")
     print(f"  Retraining dataset rows   : {len(combined)}")
     print(f"  Output path               : {RETRAINING_DATA_PATH}")
+    # Emit machine-readable line for the promote workflow to capture via shell
+    print(f"  Latest timestamp processed: {latest_ts or 'null'}")
     print("-" * 50 + "\n")
+
+    # Emit a key=value line that the workflow can grep / capture precisely
+    print(f"PSEUDO_LABEL_LATEST_TS={latest_ts or 'null'}")
 
 
 if __name__ == "__main__":
     main()
+

@@ -6,6 +6,8 @@ Responsibilities:
   - Seed the metadata file if it does not exist yet (first-run bootstrap)
   - Compare champion vs challenger RMSE to decide promotion
   - Enforce that pseudo_label_std always equals the latest promoted model's RMSE
+  - Track last_processed_log_timestamp so each production log entry is consumed
+    exactly once across retraining cycles (no duplicate learning)
 
 Design notes:
   * We use RMSE (not MAE or R²) as the gating metric for champion-challenger
@@ -15,6 +17,11 @@ Design notes:
     reads the *currently promoted* model's RMSE as the noise standard deviation
     for pseudo-label generation.  This ensures the noise level is calibrated to
     the champion's observed error distribution, not an arbitrary constant.
+  * last_processed_log_timestamp records the ISO-8601 timestamp of the newest
+    production log record consumed during the last successful promotion cycle.
+    pseudo_label.py filters logs to only rows AFTER this timestamp, preventing
+    the same records from being used in multiple retraining cycles.
+    Bootstrap value is null (process all logs on first run).
 """
 
 from __future__ import annotations
@@ -44,6 +51,9 @@ _V1_METRICS: dict[str, Any] = {
     "r2": 0.6196057137759148,
     "pseudo_label_std": 0.13470562799274285,
     "timestamp": "2026-06-09T00:00:00",
+    # null on first run — pseudo_label.py will process ALL existing log records
+    # and then set this to the newest log timestamp after promotion.
+    "last_processed_log_timestamp": None,
     "drift_triggered": False,
     "status": "champion",
 }
@@ -57,6 +67,10 @@ def load_metadata(path: Path | str = CHAMPION_METADATA_PATH) -> dict[str, Any]:
     """
     Load a metadata JSON file and return it as a dict.
 
+    Backward-compatibility: if last_processed_log_timestamp is absent (files
+    written before this field was introduced), it is injected as None so all
+    callers can unconditionally read the key.
+
     Raises FileNotFoundError if the path does not exist.
     Raises ValueError if the JSON is malformed or missing required keys.
     """
@@ -69,6 +83,8 @@ def load_metadata(path: Path | str = CHAMPION_METADATA_PATH) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
         data = json.load(fh)
     _validate_metadata(data)
+    # Inject default for files predating this field
+    data.setdefault("last_processed_log_timestamp", None)
     return data
 
 
@@ -82,7 +98,14 @@ def save_metadata(data: dict[str, Any], path: Path | str = CHAMPION_METADATA_PAT
 
 
 def _validate_metadata(data: dict[str, Any]) -> None:
-    """Raise ValueError if required keys are absent."""
+    """
+    Raise ValueError if required keys are absent.
+
+    Note: last_processed_log_timestamp is NOT in the required set because
+    existing metadata files written before this field was introduced will not
+    have it.  load_metadata() injects a default of None for backward
+    compatibility so callers can always rely on the key being present.
+    """
     required = {"model_name", "version", "mae", "rmse", "r2", "pseudo_label_std", "status"}
     missing = required - data.keys()
     if missing:

@@ -20,16 +20,21 @@ If challenger wins:
        - new MAE, RMSE, R²
        - pseudo_label_std = challenger RMSE  ← critical: next retraining cycle
          uses this value as the noise std for pseudo-label generation
+       - last_processed_log_timestamp = newest log timestamp consumed by
+         pseudo_label.py during this cycle (passed via PSEUDO_LABEL_LATEST_TS
+         env var from retrain.yml).  Future cycles will skip all records at or
+         before this timestamp, preventing duplicate learning.
        - status = "champion"
        - drift_triggered = True
-  5. Calls register_model() Azure ML hook (no-op if credentials absent)
-  6. Calls register_data_asset() Azure ML hook (no-op if credentials absent)
+  5. Prints "Manual Azure registration required." — Azure ML registration is
+     NOT called automatically; it must be performed manually when needed.
 
 If champion wins (challenger RMSE >= champion RMSE):
   1. Logs the rejection reason
   2. Does NOT increment version
   3. Does NOT update pseudo_label_std
-  4. Exits cleanly with code 0
+  4. Does NOT update last_processed_log_timestamp
+  5. Exits cleanly with code 0
 
 PSEUDO_LABEL_STD CHAIN:
 ------------------------
@@ -338,6 +343,28 @@ def promote_challenger() -> bool:
 
     # 3. Build updated champion metadata
     new_version = int(champion_meta["version"]) + 1
+
+    # Read the newest log timestamp consumed by pseudo_label.py this cycle.
+    # retrain.yml captures pseudo_label.py's "PSEUDO_LABEL_LATEST_TS=..." output
+    # and passes it here via the PSEUDO_LABEL_LATEST_TS environment variable.
+    # If the variable is absent or set to 'null', we preserve the previous value
+    # so we never accidentally regress the pointer.
+    raw_latest_ts = os.environ.get("PSEUDO_LABEL_LATEST_TS", "").strip()
+    if raw_latest_ts and raw_latest_ts.lower() != "null":
+        new_last_processed_ts: str | None = raw_latest_ts
+        logger.info(
+            "✓ last_processed_log_timestamp → '%s' (newest log consumed this cycle)",
+            new_last_processed_ts,
+        )
+    else:
+        # Fall back to whatever the champion previously recorded
+        new_last_processed_ts = champion_meta.get("last_processed_log_timestamp")
+        logger.warning(
+            "PSEUDO_LABEL_LATEST_TS not set or null — "
+            "preserving existing last_processed_log_timestamp='%s'.",
+            new_last_processed_ts,
+        )
+
     new_meta = {
         "model_name": "surgecast-model",
         "version": new_version,
@@ -349,6 +376,9 @@ def promote_challenger() -> bool:
         # the latest promoted model's RMSE so the noise is calibrated.
         "pseudo_label_std": float(challenger_meta["rmse"]),
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        # Record the newest log timestamp consumed this cycle so pseudo_label.py
+        # can skip these records on the next retraining cycle.
+        "last_processed_log_timestamp": new_last_processed_ts,
         "drift_triggered": bool(challenger_meta.get("drift_triggered", True)),
         "status": "champion",
         "promoted_from_version": challenger_meta["version"],
@@ -362,21 +392,15 @@ def promote_challenger() -> bool:
         challenger_meta["rmse"],
     )
 
-    # 4. Azure ML registration
-    register_model(
-        model_name="surgecast-model",
-        version=new_version,
-        model_path=CHAMPION_MODEL_PATH,
-        metrics={
-            "mae": challenger_meta["mae"],
-            "rmse": challenger_meta["rmse"],
-            "r2": challenger_meta["r2"],
-        },
+
+    # 4. Azure ML registration (manual step — not performed automatically)
+    print(
+        "Manual Azure registration required."
     )
-    register_data_asset(
-        dataset_name="surgecast-retraining-data",
-        version=new_version,
-        data_path=RETRAINING_DATA_PATH,
+    logger.info(
+        "Azure ML registration is a manual step. "
+        "Call register_model() and register_data_asset() with the appropriate "
+        "credentials when ready to register in Azure ML."
     )
 
     # 5. Log promotion event

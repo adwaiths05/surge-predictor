@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -62,7 +63,12 @@ logger = logging.getLogger(__name__)
 # Paths
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
-RETRAINING_DATA_PATH = BASE_DIR / "data" / "retraining_dataset.parquet"
+REPROCESSING_DATASET_PATH = os.getenv(
+    "RETRAINING_DATASET_PATH",
+    str(BASE_DIR / "data" / "retraining_dataset.parquet"),
+)
+REPROCESSING_DATA_PATH = Path(REPROCESSING_DATASET_PATH)
+RETRAINING_DATA_PATH = REPROCESSING_DATA_PATH  # alias for clarity
 ARTIFACTS_DIR = BASE_DIR / "artifacts"
 CHALLENGER_MODEL_PATH = ARTIFACTS_DIR / "challenger_model.pkl"
 CHALLENGER_FEATURE_IMPORTANCE_PATH = ARTIFACTS_DIR / "challenger_feature_importance.json"
