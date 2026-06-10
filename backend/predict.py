@@ -140,6 +140,10 @@ async def predict_surge(zone_name: str, client: httpx.AsyncClient) -> dict[str, 
             )
         },
         "timestamp": context["timestamp"],
+        # Internal context carried through for JSONL structured logging.
+        # Not part of the public PredictResponse schema — Pydantic ignores
+        # extra fields by default, so this never leaks to API consumers.
+        "_context": context,
     }
     return result
 

@@ -1,0 +1,2 @@
+# This file keeps the logs/ directory tracked in git.
+# logs/predictions.jsonl is gitignored (production data).

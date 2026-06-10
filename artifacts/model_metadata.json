@@ -1,0 +1,11 @@
+{
+  "model_name": "surgecast-model",
+  "version": 1,
+  "mae": 0.09128069329186603,
+  "rmse": 0.13470562799274285,
+  "r2": 0.6196057137759148,
+  "pseudo_label_std": 0.13470562799274285,
+  "timestamp": "2026-06-09T00:00:00",
+  "drift_triggered": false,
+  "status": "champion"
+}

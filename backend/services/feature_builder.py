@@ -150,6 +150,17 @@ async def build_feature_dataframe(
         "timestamp": now.isoformat(),
         "weather": weather,
         "traffic": {"traffic_flow_ratio": traffic_flow},
+        # Datetime features — included so JSONL log writer can populate all
+        # 21 model feature columns without a second call to build_datetime_features.
+        "hour_of_day": dt_features["hour_of_day"],
+        "day_of_week": dt_features["day_of_week"],
+        "month": dt_features["month"],
+        "is_weekend": dt_features["is_weekend"],
+        "is_rush_hour": dt_features["is_rush_hour"],
+        "is_holiday": int(holiday_flag),
+        # Encoded integer identifiers (output of LabelEncoder)
+        "borough_encoded": int(borough_encoded),
+        "zone_name_encoded": int(zone_name_encoded),
         "feature_signals": {
             "heavy_rain": heavy_rain,
             "rain_last_3hr": rain_last_3hr,

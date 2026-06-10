@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+import json
 import time
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request, Response, status
@@ -29,6 +31,52 @@ from backend.services.analytics import get_kpis, record_inference
 from backend.services.http_client import create_http_client
 from backend.services.feature_builder import get_zone_names
 from backend.utils.logger import logger
+
+
+# ---------------------------------------------------------------------------
+# Structured production log writer
+# ---------------------------------------------------------------------------
+# WHY: True online supervised learning is not possible because production
+# inference requests do not include ground-truth surge labels.  Instead, we
+# emit structured JSONL records (features + prediction) so that:
+#   1. training/drift.py can compare the production feature distribution
+#      against the training baseline to detect covariate shift.
+#   2. training/pseudo_label.py can generate pseudo-labels
+#      (prediction + N(0, RMSE)) for retraining without real labels.
+#
+# Log location: logs/predictions.jsonl at the project root.
+# Each line is a self-contained JSON object:
+#   { "features": {...}, "prediction": float, "timestamp": "ISO-8601" }
+_JSONL_LOG_PATH = Path(__file__).resolve().parent.parent / "logs" / "predictions.jsonl"
+
+
+def _log_prediction_jsonl(
+    features: dict,
+    prediction: float,
+    timestamp: str,
+) -> None:
+    """
+    Append one JSONL record to logs/predictions.jsonl.
+
+    Called after every successful inference.  Fails silently — a log write
+    failure must never interrupt the prediction response.
+
+    Args:
+        features:   The raw feature dict passed to the model.
+        prediction: The final (inverse-transformed) surge multiplier.
+        timestamp:  ISO-8601 timestamp of the inference.
+    """
+    try:
+        _JSONL_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "features": features,
+            "prediction": round(prediction, 6),
+            "timestamp": timestamp,
+        }
+        with _JSONL_LOG_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to write JSONL prediction log: %s", exc)
 
 
 @asynccontextmanager
@@ -123,6 +171,49 @@ async def predict_route(payload: PredictRequest, request: Request) -> PredictRes
         result = await predict_surge(payload.zone_name, _http_client_from_request(request))
         latency_ms = (time.perf_counter() - started) * 1000
         record_inference(latency_ms)
+
+        # Write structured JSONL log for drift detection and pseudo-labeling.
+        # _context carries the full feature signals from build_feature_dataframe()
+        # including all datetime, zone, weather, traffic, and interaction features.
+        # The write is non-blocking and fails silently — it must never impact inference.
+        ctx = result.get("_context", {})
+        weather_ctx = ctx.get("weather", {})
+        traffic_ctx = ctx.get("traffic", {})
+        dt_features = {
+            k: ctx.get(k)
+            for k in ("hour_of_day", "day_of_week", "month", "is_weekend", "is_rush_hour", "is_holiday")
+        }
+        fs = ctx.get("feature_signals", {})
+        _log_prediction_jsonl(
+            features={
+                # Datetime features (from build_feature_dataframe context)
+                **dt_features,
+                # Zone identifiers (encoded integers)
+                "zone_id":             ctx.get("zone_id"),
+                "borough":             ctx.get("borough_encoded"),
+                "zone_name":           ctx.get("zone_name_encoded"),
+                # Weather features
+                "temperature":         weather_ctx.get("temperature"),
+                "precipitation_mm":    weather_ctx.get("precipitation_mm"),
+                "wind_speed":          weather_ctx.get("wind_speed"),
+                "is_rainy":            int(weather_ctx.get("is_rainy", 0)),
+                "heavy_rain":          fs.get("heavy_rain"),
+                "rain_last_3hr":       fs.get("rain_last_3hr"),
+                "extreme_temp":        fs.get("extreme_temp"),
+                # Traffic / demand — logged as congestion_ratio (canonical spec name)
+                # The backend builds this as traffic_flow_ratio; we normalise here so
+                # drift.py and pseudo_label.py can use the spec feature name directly.
+                "congestion_ratio":    traffic_ctx.get("traffic_flow_ratio"),
+                "demand_growth_rate":  fs.get("demand_growth_rate"),
+                # Interaction features
+                "rushhour_congestion": fs.get("rushhour_congestion"),
+                "rain_congestion":     fs.get("rain_congestion"),
+                "temp_congestion":     fs.get("temp_congestion"),
+            },
+            prediction=result["surge_multiplier"],
+            timestamp=result["timestamp"],
+        )
+
         return PredictResponse(**result)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

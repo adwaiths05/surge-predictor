@@ -1,0 +1,38 @@
+[
+  {
+    "timestamp": "2026-06-09T13:55:18.721343+00:00",
+    "n_production_records": 0,
+    "psi_scores": {
+      "temperature": 0.0,
+      "precipitation_mm": 0.0,
+      "wind_speed": 0.0,
+      "congestion_ratio": 0.0,
+      "demand_growth_rate": 0.0
+    },
+    "ks_scores": {
+      "temperature": {
+        "statistic": 0.0,
+        "p_value": 1.0
+      },
+      "precipitation_mm": {
+        "statistic": 0.0,
+        "p_value": 1.0
+      },
+      "wind_speed": {
+        "statistic": 0.0,
+        "p_value": 1.0
+      },
+      "congestion_ratio": {
+        "statistic": 0.0,
+        "p_value": 1.0
+      },
+      "demand_growth_rate": {
+        "statistic": 0.0,
+        "p_value": 1.0
+      }
+    },
+    "overall_drift_score": 0.0,
+    "drift_detected": false,
+    "psi_threshold": 0.25
+  }
+]

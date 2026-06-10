@@ -1,0 +1,198 @@
+# .github/workflows/retrain.yml
+#
+# PURPOSE:
+#   Full challenger model retraining pipeline, triggered when drift is detected.
+#
+# STEPS:
+#   1. Generate pseudo-labeled production records (pseudo_label.py)
+#        - Reads current champion RMSE from model_metadata.json
+#        - Applies pseudo_label = prediction + N(0, RMSE) to each log record
+#        - Merges pseudo-labeled rows with surgecast_training.parquet
+#        - Saves data/retraining_dataset.parquet
+#   2. Train challenger model (train.py)
+#        - Loads retraining_dataset.parquet
+#        - Time-based 80/20 split, median imputation
+#        - LightGBM (same hyperparameters as champion)
+#        - Saves artifacts/challenger_model.pkl and challenger_metadata.json
+#   3. Champion-challenger comparison
+#        - Reads both metadata files
+#        - Outputs challenger_wins=true/false
+#   4. Trigger promote.yml if challenger wins
+#
+# TRIGGERED BY:
+#   - check_drift.yml (automatic, after drift is detected)
+#   - Manual workflow_dispatch (for testing)
+#
+# INPUTS:
+#   drift_triggered: "true"/"false" — passed through to train.py metadata
+
+name: Retrain Challenger Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      drift_triggered:
+        description: "Was this run triggered by drift detection?"
+        required: false
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+jobs:
+  retrain:
+    name: Generate Pseudo-Labels + Train Challenger
+    runs-on: ubuntu-latest
+    outputs:
+      challenger_wins: ${{ steps.evaluate.outputs.challenger_wins }}
+      challenger_rmse: ${{ steps.evaluate.outputs.challenger_rmse }}
+      champion_rmse:   ${{ steps.evaluate.outputs.champion_rmse }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so we can push the updated parquet and metadata
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ------------------------------------------------------------------
+      # Step 1: Generate pseudo-labeled retraining dataset
+      # ------------------------------------------------------------------
+      - name: Generate pseudo-labels and build retraining dataset
+        run: python -m training.pseudo_label
+        # This reads:
+        #   artifacts/model_metadata.json  → champion RMSE (pseudo_label_std)
+        #   logs/predictions.jsonl         → production records
+        #   data/surgecast_training.parquet → historical baseline
+        # Writes:
+        #   data/retraining_dataset.parquet
+
+      # ------------------------------------------------------------------
+      # Step 2: Train challenger model
+      # ------------------------------------------------------------------
+      - name: Train challenger model
+        run: |
+          DRIFT_FLAG=""
+          if [ "${{ inputs.drift_triggered }}" = "true" ]; then
+            DRIFT_FLAG="--drift"
+          fi
+          python -m training.train $DRIFT_FLAG
+        # Writes:
+        #   artifacts/challenger_model.pkl
+        #   artifacts/challenger_feature_importance.json
+        #   artifacts/challenger_metadata.json
+
+      # ------------------------------------------------------------------
+      # Step 3: Champion-challenger RMSE comparison
+      # ------------------------------------------------------------------
+      - name: Compare champion vs challenger
+        id: evaluate
+        run: |
+          python - <<'EOF'
+          import json, sys, os
+          from pathlib import Path
+
+          champion_path    = Path("artifacts/model_metadata.json")
+          challenger_path  = Path("artifacts/challenger_metadata.json")
+
+          with champion_path.open() as f:
+              champion = json.load(f)
+          with challenger_path.open() as f:
+              challenger = json.load(f)
+
+          champ_rmse = float(champion["rmse"])
+          chal_rmse  = float(challenger["rmse"])
+
+          print(f"Champion  RMSE: {champ_rmse:.6f}")
+          print(f"Challenger RMSE: {chal_rmse:.6f}")
+
+          wins = chal_rmse < champ_rmse
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+              gh_out.write(f"challenger_wins={'true' if wins else 'false'}\n")
+              gh_out.write(f"challenger_rmse={chal_rmse:.6f}\n")
+              gh_out.write(f"champion_rmse={champ_rmse:.6f}\n")
+
+          if wins:
+              print(f"✓ Challenger wins (improvement: {champ_rmse - chal_rmse:.6f})")
+          else:
+              print(f"✗ Champion retained (challenger did not improve RMSE)")
+          EOF
+
+      - name: Print evaluation summary
+        run: |
+          echo "Champion  RMSE : ${{ steps.evaluate.outputs.champion_rmse }}"
+          echo "Challenger RMSE: ${{ steps.evaluate.outputs.challenger_rmse }}"
+          echo "Challenger wins: ${{ steps.evaluate.outputs.challenger_wins }}"
+
+      # ------------------------------------------------------------------
+      # Step 4: Upload challenger artifacts for the promote job
+      # ------------------------------------------------------------------
+      - name: Upload challenger model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: challenger-model-${{ github.run_id }}
+          path: |
+            artifacts/challenger_model.pkl
+            artifacts/challenger_metadata.json
+            artifacts/challenger_feature_importance.json
+          retention-days: 7
+
+      - name: Upload retraining dataset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: retraining-dataset-${{ github.run_id }}
+          path: data/retraining_dataset.parquet
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # Trigger promotion only when challenger wins
+  # ------------------------------------------------------------------
+  trigger-promote:
+    name: Trigger Promotion (challenger wins)
+    needs: retrain
+    if: needs.retrain.outputs.challenger_wins == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger promote workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          script: |
+            const runId = '${{ github.run_id }}';
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              workflow_id: 'promote.yml',
+              ref: 'main',
+              inputs: {
+                retrain_run_id: runId,
+              }
+            });
+            console.log(`✓ promote.yml dispatched (challenger wins, retrain_run_id=${runId}).`);
+
+  notify-no-promotion:
+    name: Log Champion Retained
+    needs: retrain
+    if: needs.retrain.outputs.challenger_wins == 'false'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Champion retained — no promotion
+        run: |
+          echo "Champion model retained."
+          echo "Champion  RMSE : ${{ needs.retrain.outputs.champion_rmse }}"
+          echo "Challenger RMSE: ${{ needs.retrain.outputs.challenger_rmse }}"
+          echo "pseudo_label_std remains unchanged."
