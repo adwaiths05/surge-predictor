@@ -1,27 +1,3 @@
-# .github/workflows/promote.yml
-#
-# PURPOSE:
-#   Conditionally promote a challenger model to champion.
-#   This workflow runs ONLY when retrain.yml confirms the challenger wins
-#   (challenger RMSE < champion RMSE).
-#
-# STEPS:
-#   1. Download challenger artifacts from the triggering retrain run
-#   2. Re-verify challenger_rmse < champion_rmse (safety double-check)
-#   3. Run training/promotion.py (replaces model.pkl, updates metadata)
-#   4. Commit updated champion artifacts to the repository
-#   5. Create a git tag model-vN for traceability
-#   NOTE: Azure ML registration is NOT automatic — promotion.py logs a manual
-#         registration reminder instead.
-#
-# TRIGGERED BY:
-#   - retrain.yml (automatic, when challenger wins evaluation)
-#   - Manual workflow_dispatch (for emergency promotion or testing)
-#
-# REQUIRED SECRETS:
-#   GITHUB_TOKEN  — auto-provided, used for push and tag
-#   GH_PAT        — optional, needed if default token lacks push permission
-
 name: Promote Challenger to Champion
 
 on:
@@ -37,6 +13,10 @@ on:
         default: "null"
         type: string
 
+permissions:
+  actions: read
+  contents: write
+
 jobs:
   promote:
     name: Promote Challenger Model
@@ -47,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -58,24 +38,24 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ------------------------------------------------------------------
-      # Download challenger artifacts produced by the retrain run
-      # ------------------------------------------------------------------
       - name: Download challenger model artifacts
         uses: actions/download-artifact@v4
         with:
           name: challenger-model-${{ inputs.retrain_run_id }}
-          path: artifacts/
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.retrain_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
 
       - name: Download retraining dataset
         uses: actions/download-artifact@v4
         with:
           name: retraining-dataset-${{ inputs.retrain_run_id }}
-          path: data/
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.retrain_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .
 
-      # ------------------------------------------------------------------
-      # Safety double-check: re-verify challenger wins before promoting
-      # ------------------------------------------------------------------
       - name: Verify challenger wins (safety re-check)
         id: verify
         run: |
@@ -83,7 +63,7 @@ jobs:
           import json, sys
           from pathlib import Path
 
-          champion_path   = Path("artifacts/model_metadata.json")
+          champion_path = Path("artifacts/model_metadata.json")
           challenger_path = Path("artifacts/challenger_metadata.json")
 
           if not champion_path.exists():
@@ -99,7 +79,7 @@ jobs:
               challenger = json.load(f)
 
           champ_rmse = float(champion["rmse"])
-          chal_rmse  = float(challenger["rmse"])
+          chal_rmse = float(challenger["rmse"])
 
           print(f"Safety check — Champion RMSE={champ_rmse:.6f}  Challenger RMSE={chal_rmse:.6f}")
 
@@ -111,87 +91,70 @@ jobs:
           print(f"✓ Safety check passed — challenger improves RMSE by {champ_rmse - chal_rmse:.6f}")
           EOF
 
-      # ------------------------------------------------------------------
-      # Run promotion logic
-      # ------------------------------------------------------------------
       - name: Promote challenger to champion
         run: python -m training.promotion
         env:
-          # Timestamp of the newest production log record consumed this cycle.
-          # promotion.py reads this and stores it in model_metadata.json so the
-          # next retraining cycle skips records at or before this timestamp.
           PSEUDO_LABEL_LATEST_TS: ${{ inputs.pseudo_label_latest_ts }}
-        # promotion.py performs:
-        #   - Copies challenger_model.pkl → model.pkl
-        #   - Copies challenger_feature_importance.json → feature_importance.json
-        #   - Increments version, updates model_metadata.json
-        #   - Sets pseudo_label_std = challenger RMSE (for next retraining cycle)
-        #   - Sets last_processed_log_timestamp = PSEUDO_LABEL_LATEST_TS
-        #   - Prints "Manual Azure registration required." (no automatic cloud call)
 
-      # ------------------------------------------------------------------
-      # Read the new version number for tagging
-      # ------------------------------------------------------------------
       - name: Read new champion version
         id: new_version
         run: |
           python - <<'EOF'
           import json, os
           from pathlib import Path
+
           with Path("artifacts/model_metadata.json").open() as f:
               meta = json.load(f)
+
           version = meta["version"]
-          rmse    = meta["rmse"]
+          rmse = meta["rmse"]
+
           with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
               gh_out.write(f"version={version}\n")
               gh_out.write(f"rmse={rmse:.6f}\n")
+
           print(f"New champion: v{version}  RMSE={rmse:.6f}")
           EOF
 
-      # ------------------------------------------------------------------
-      # Commit updated champion artifacts to the repository
-      # ------------------------------------------------------------------
       - name: Commit champion artifacts
         run: |
-          git config user.name  "github-actions[bot]"
+          set -e
+
+          git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Stage updated files
           git add artifacts/model.pkl
           git add artifacts/model_metadata.json
           git add artifacts/feature_importance.json
-          git add artifacts/promotion_log.jsonl || true   # may not exist yet
+          git add artifacts/promotion_log.jsonl 2>/dev/null || true
 
-          # Commit only if there are staged changes
-          git diff --cached --quiet || git commit -m \
-            "feat(mlops): promote challenger to champion v${{ steps.new_version.outputs.version }} [skip ci]
+          if git diff --cached --quiet; then
+            echo "No champion artifact changes to commit."
+            exit 0
+          fi
 
-          RMSE improved: $(python -c \"
+          NEW_RMSE=$(python - <<'PY'
           import json
-          c = json.load(open('artifacts/model_metadata.json'))
-          print(f\"{c['rmse']:.6f}\")
-          \")
-          Triggered by drift detection → pseudo-labeling → retraining → evaluation."
+          from pathlib import Path
+          with Path("artifacts/model_metadata.json").open() as f:
+              meta = json.load(f)
+          print(f"{float(meta['rmse']):.6f}")
+          PY
+          )
 
-          git push origin main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git commit -m "feat(mlops): promote challenger to champion v${{ steps.new_version.outputs.version }} [skip ci]" \
+            -m "RMSE improved: ${NEW_RMSE}" \
+            -m "Triggered by drift detection → pseudo-labeling → retraining → evaluation."
 
-      # ------------------------------------------------------------------
-      # Create version tag for traceability
-      # ------------------------------------------------------------------
+          git push origin HEAD:main
+
       - name: Create model version tag
         run: |
           VERSION="v${{ steps.new_version.outputs.version }}"
           TAG="model-${VERSION}"
           git tag -a "$TAG" -m "SurgeCast champion model ${VERSION} — RMSE=${{ steps.new_version.outputs.rmse }}"
           git push origin "$TAG"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # ------------------------------------------------------------------
-      # Summary
-      # ------------------------------------------------------------------
       - name: Promotion summary
         run: |
           echo "═══════════════════════════════════════════════"

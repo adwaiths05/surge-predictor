@@ -1,35 +1,8 @@
-# .github/workflows/check_drift.yml
-#
-# PURPOSE:
-#   Run feature drift detection weekly against the production inference logs.
-#   If significant drift is detected (PSI >= 0.25 on any feature), trigger
-#   the retraining pipeline automatically via workflow_dispatch.
-#
-# SCHEDULE: Every Monday at 00:00 UTC
-#
-# HOW DRIFT TRIGGERS RETRAINING:
-#   training/drift.py exits with code 1 when drift_detected == True.
-#   The "Check exit code" step captures this and sets a job output
-#   `drift_detected=true`, which the conditional dispatch step reads.
-#   This means retraining is only triggered when genuinely needed —
-#   not on every scheduled run.
-#
-# ARTIFACT POLICY:
-#   drift_history.json is uploaded as a workflow artifact (retention: 90 days)
-#   and is NOT committed back to the repository.  Generated monitoring
-#   artefacts must not continuously modify repository history.
-#
-# PERMISSIONS:
-#   actions: write  — required to dispatch retrain.yml via the API
-#   contents: read  — minimum needed for checkout
-
 name: Weekly Drift Check
 
 on:
   schedule:
-    # Run every Monday at 00:00 UTC
     - cron: "0 0 * * 1"
-  # Allow manual trigger for testing
   workflow_dispatch:
 
 permissions:
@@ -37,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  drift-check:
+  drift_check:
     name: Detect Feature Drift
     runs-on: ubuntu-latest
     outputs:
@@ -58,15 +31,12 @@ jobs:
 
       - name: Run drift detection
         id: drift
-        # drift.py exits with code 1 if drift is detected, 0 if stable.
-        # We capture the exit code without failing the job so we can
-        # conditionally trigger retraining below.
         run: |
           set +e
           python -m training.drift
           EXIT_CODE=$?
           set -e
-          if [ $EXIT_CODE -eq 1 ]; then
+          if [ "$EXIT_CODE" -eq 1 ]; then
             echo "drift_detected=true" >> "$GITHUB_OUTPUT"
             echo "::warning::Drift detected — retraining pipeline will be triggered."
           else
@@ -80,29 +50,22 @@ jobs:
           name: drift-history-${{ github.run_id }}
           path: artifacts/drift_history.json
           retention-days: 90
-        # drift_history.json is intentionally NOT committed back to the repo.
-        # Continuous monitoring artefacts should live in workflow artifacts,
-        # not in repository history, to avoid polluting the git log.
 
-  trigger-retrain:
+  trigger_retrain:
     name: Trigger Retraining (if drift detected)
-    needs: drift-check
-    if: needs.drift-check.outputs.drift_detected == 'true'
+    needs: drift_check
+    if: needs.drift_check.outputs.drift_detected == 'true'
     runs-on: ubuntu-latest
 
     steps:
       - name: Trigger retrain workflow
         uses: actions/github-script@v7
         with:
-          # Uses the built-in GITHUB_TOKEN — no GH_PAT required.
-          # The 'actions: write' permission declared at the top of this file
-          # grants the token the necessary scope to dispatch workflow_dispatch
-          # events within the same repository.
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
-              repo:  context.repo.repo,
+              repo: context.repo.repo,
               workflow_id: 'retrain.yml',
               ref: 'main',
               inputs: {
