@@ -85,6 +85,14 @@ steps:
       echo "===== ARTIFACTS AFTER COPY ====="
       find artifacts -type f | sort
 
+  - name: Verify copied challenger artifacts
+    run: |
+      test -f artifacts/challenger_model.pkl
+      test -f artifacts/challenger_metadata.json
+      test -f artifacts/challenger_feature_importance.json
+
+      echo "✓ Challenger artifacts prepared successfully"
+
   # ------------------------------------------------------------------
   # Safety double-check: re-verify challenger wins before promoting
   # ------------------------------------------------------------------
@@ -97,23 +105,18 @@ steps:
       from pathlib import Path
 
       champion_path = Path("artifacts/model_metadata.json")
-
-      challenger_candidates = list(
-          Path("challenger_artifacts").rglob("challenger_metadata.json")
-      )
+      challenger_path = Path("artifacts/challenger_metadata.json")
 
       if not champion_path.exists():
           print("ERROR: Champion metadata not found.")
           sys.exit(1)
 
-      if not challenger_candidates:
+      if not challenger_path.exists():
           print("ERROR: Challenger metadata not found.")
-          print("\nDownloaded challenger files:")
+          print("\nDownloaded files:")
           for p in Path("challenger_artifacts").rglob("*"):
-              print(p)
+            print(p)
           sys.exit(1)
-
-      challenger_path = challenger_candidates[0]
 
       print(f"Champion metadata   : {champion_path}")
       print(f"Challenger metadata : {challenger_path}")
