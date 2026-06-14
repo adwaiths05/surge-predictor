@@ -46,7 +46,10 @@ jobs:
           run-id: ${{ inputs.retrain_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .
-
+      - name: Debug artifact contents
+        run: |
+          echo "===== ARTIFACT TREE ====="
+          find artifacts -type f
       - name: Download retraining dataset
         uses: actions/download-artifact@v4
         with:
