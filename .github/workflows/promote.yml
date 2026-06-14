@@ -48,8 +48,12 @@ jobs:
           path: .
       - name: Debug artifact contents
         run: |
-          echo "===== ARTIFACT TREE ====="
-          find artifacts -type f
+          echo "===== ROOT ====="
+          find . -type f | sort
+
+          echo ""
+          echo "===== ARTIFACTS ====="
+          find artifacts -type f | sort || true
       - name: Download retraining dataset
         uses: actions/download-artifact@v4
         with:
