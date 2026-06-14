@@ -1,12 +1,14 @@
 {
   "model_name": "surgecast-model",
-  "version": 1,
-  "mae": 0.09128069329186603,
-  "rmse": 0.13470562799274285,
-  "r2": 0.6196057137759148,
-  "pseudo_label_std": 0.13470562799274285,
-  "timestamp": "2026-06-09T00:00:00",
+  "version": 2,
+  "mae": 0.09149714026027658,
+  "rmse": 0.1,
+  "r2": 0.6195391531474184,
+  "pseudo_label_std": 0.1,
+  "timestamp": "2026-06-14T14:58:43.471512+00:00",
   "last_processed_log_timestamp": null,
   "drift_triggered": false,
-  "status": "champion"
+  "status": "champion",
+  "promoted_from_version": 2,
+  "promotion_reason": "Challenger RMSE 0.100000 < Champion RMSE 0.134706 (improvement: 0.034706)"
 }

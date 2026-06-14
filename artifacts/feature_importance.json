@@ -2,43 +2,108 @@
   "top_features": [
     {
       "feature": "zone_id",
-      "importance_pct": 19.35
+      "importance": 6045.0,
+      "importance_pct": 19.1905
     },
     {
       "feature": "hour_of_day",
-      "importance_pct": 16.79
+      "importance": 5285.0,
+      "importance_pct": 16.7778
     },
     {
       "feature": "zone_name",
-      "importance_pct": 10.76
+      "importance": 3349.0,
+      "importance_pct": 10.6317
     },
     {
       "feature": "day_of_week",
-      "importance_pct": 10.15
+      "importance": 3114.0,
+      "importance_pct": 9.8857
     },
     {
       "feature": "congestion_ratio",
-      "importance_pct": 7.46
+      "importance": 2358.0,
+      "importance_pct": 7.4857
     },
     {
       "feature": "temperature",
-      "importance_pct": 6.82
+      "importance": 2174.0,
+      "importance_pct": 6.9016
     },
     {
       "feature": "demand_growth_rate",
-      "importance_pct": 6.23
+      "importance": 2057.0,
+      "importance_pct": 6.5302
     },
     {
       "feature": "temp_congestion",
-      "importance_pct": 5.46
+      "importance": 1738.0,
+      "importance_pct": 5.5175
     },
     {
       "feature": "wind_speed",
-      "importance_pct": 4.69
+      "importance": 1522.0,
+      "importance_pct": 4.8317
     },
     {
       "feature": "borough",
-      "importance_pct": 3.67
+      "importance": 1146.0,
+      "importance_pct": 3.6381
+    },
+    {
+      "feature": "rushhour_congestion",
+      "importance": 789.0,
+      "importance_pct": 2.5048
+    },
+    {
+      "feature": "rain_last_3hr",
+      "importance": 351.0,
+      "importance_pct": 1.1143
+    },
+    {
+      "feature": "is_holiday",
+      "importance": 350.0,
+      "importance_pct": 1.1111
+    },
+    {
+      "feature": "is_rush_hour",
+      "importance": 327.0,
+      "importance_pct": 1.0381
+    },
+    {
+      "feature": "is_weekend",
+      "importance": 268.0,
+      "importance_pct": 0.8508
+    },
+    {
+      "feature": "month",
+      "importance": 247.0,
+      "importance_pct": 0.7841
+    },
+    {
+      "feature": "precipitation_mm",
+      "importance": 215.0,
+      "importance_pct": 0.6825
+    },
+    {
+      "feature": "rain_congestion",
+      "importance": 162.0,
+      "importance_pct": 0.5143
+    },
+    {
+      "feature": "extreme_temp",
+      "importance": 2.0,
+      "importance_pct": 0.0063
+    },
+    {
+      "feature": "is_rainy",
+      "importance": 1.0,
+      "importance_pct": 0.0032
+    },
+    {
+      "feature": "heavy_rain",
+      "importance": 0.0,
+      "importance_pct": 0.0
     }
   ]
 }
