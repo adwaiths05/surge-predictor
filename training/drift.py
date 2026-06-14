@@ -67,7 +67,7 @@ DRIFT_HISTORY_PATH = BASE_DIR / "artifacts" / "drift_history.json"
 # ---------------------------------------------------------------------------
 PSI_THRESHOLD = 0.25
 PSI_BINS = 10
-MIN_LOGS_FOR_DRIFT = 0  # minimum production records required for reliable drift detection
+MIN_LOGS_FOR_DRIFT = 1000  # minimum production records required for reliable drift detection
 
 # Continuous features to monitor for drift.
 # These are the features most likely to exhibit covariate shift in production
@@ -343,7 +343,7 @@ def detect_drift(
         )
 
     overall_drift_score = float(np.mean(list(psi_scores.values()))) if psi_scores else 0.0
-    drift_detected = True
+    drift_detected = any(v >= PSI_THRESHOLD for v in psi_scores.values())
 
     report: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
