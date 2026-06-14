@@ -176,6 +176,8 @@ def create_challenger_metadata(
         "mae": mae,
         "rmse": rmse,
         "r2": r2,
+        "pseudo_label_std": rmse,
+
         # pseudo_label_std is NOT set for challengers — only promoted champions carry this.
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "drift_triggered": drift_triggered,
