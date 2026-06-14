@@ -1,175 +1,244 @@
 name: Promote Challenger to Champion
 
 on:
-  workflow_dispatch:
-    inputs:
-      retrain_run_id:
-        description: "Run ID of the retrain workflow that produced the challenger"
-        required: true
-        type: string
-      pseudo_label_latest_ts:
-        description: "Newest log timestamp consumed by pseudo_label.py this cycle (ISO-8601 or 'null')"
-        required: false
-        default: "null"
-        type: string
+workflow_dispatch:
+inputs:
+retrain_run_id:
+description: "Run ID of the retrain workflow that produced the challenger"
+required: true
+type: string
+pseudo_label_latest_ts:
+description: "Newest log timestamp consumed by pseudo_label.py this cycle (ISO-8601 or 'null')"
+required: false
+default: "null"
+type: string
 
 permissions:
-  actions: read
-  contents: write
+actions: read
+contents: write
 
 jobs:
-  promote:
-    name: Promote Challenger Model
-    runs-on: ubuntu-latest
+promote:
+name: Promote Challenger Model
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+      token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
+  - name: Set up Python 3.11
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.11"
+      cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+  - name: Install dependencies
+    run: pip install -r requirements.txt
 
-      - name: Download challenger model artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: challenger-model-${{ inputs.retrain_run_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.retrain_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: .
-      - name: Debug artifact contents
-        run: |
-          echo "===== ROOT ====="
-          find . -type f | sort
+  # ------------------------------------------------------------------
+  # Download challenger artifacts produced by the retrain run
+  # ------------------------------------------------------------------
+  - name: Download challenger model artifacts
+    uses: actions/download-artifact@v4
+    with:
+      name: challenger-model-${{ inputs.retrain_run_id }}
+      repository: ${{ github.repository }}
+      run-id: ${{ inputs.retrain_run_id }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      path: challenger_artifacts
 
-          echo ""
-          echo "===== ARTIFACTS ====="
-          find artifacts -type f | sort || true
-      - name: Download retraining dataset
-        uses: actions/download-artifact@v4
-        with:
-          name: retraining-dataset-${{ inputs.retrain_run_id }}
-          repository: ${{ github.repository }}
-          run-id: ${{ inputs.retrain_run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          path: .
+  - name: Debug downloaded challenger files
+    run: |
+      echo "===== CHALLENGER FILES ====="
+      find challenger_artifacts -type f | sort || true
 
-      - name: Verify challenger wins (safety re-check)
-        id: verify
-        run: |
-          python - <<'EOF'
-          import json, sys
-          from pathlib import Path
+  - name: Download retraining dataset
+    uses: actions/download-artifact@v4
+    with:
+      name: retraining-dataset-${{ inputs.retrain_run_id }}
+      repository: ${{ github.repository }}
+      run-id: ${{ inputs.retrain_run_id }}
+      github-token: ${{ secrets.GITHUB_TOKEN }}
+      path: retraining_dataset
 
-          champion_path = Path("artifacts/model_metadata.json")
-          challenger_path = Path("artifacts/challenger_metadata.json")
+  # ------------------------------------------------------------------
+  # Copy challenger files into artifacts/ so promotion.py can use
+  # its existing expected paths without modification.
+  # ------------------------------------------------------------------
+  - name: Prepare challenger artifacts
+    run: |
+      mkdir -p artifacts
 
-          if not champion_path.exists():
-              print("ERROR: Champion metadata not found.")
-              sys.exit(1)
-          if not challenger_path.exists():
-              print("ERROR: Challenger metadata not found.")
-              sys.exit(1)
+      find challenger_artifacts -name challenger_model.pkl \
+        -exec cp {} artifacts/challenger_model.pkl \;
 
-          with champion_path.open() as f:
-              champion = json.load(f)
-          with challenger_path.open() as f:
-              challenger = json.load(f)
+      find challenger_artifacts -name challenger_metadata.json \
+        -exec cp {} artifacts/challenger_metadata.json \;
 
-          champ_rmse = float(champion["rmse"])
-          chal_rmse = float(challenger["rmse"])
+      find challenger_artifacts -name challenger_feature_importance.json \
+        -exec cp {} artifacts/challenger_feature_importance.json \;
 
-          print(f"Safety check — Champion RMSE={champ_rmse:.6f}  Challenger RMSE={chal_rmse:.6f}")
+      echo "===== ARTIFACTS AFTER COPY ====="
+      find artifacts -type f | sort
 
-          if chal_rmse >= champ_rmse:
-              print("SAFETY CHECK FAILED: Challenger RMSE is not better than champion.")
-              print("Promotion aborted to protect the production model.")
-              sys.exit(1)
+  # ------------------------------------------------------------------
+  # Safety double-check: re-verify challenger wins before promoting
+  # ------------------------------------------------------------------
+  - name: Verify challenger wins (safety re-check)
+    id: verify
+    run: |
+      python - <<'EOF'
+      import json
+      import sys
+      from pathlib import Path
 
-          print(f"✓ Safety check passed — challenger improves RMSE by {champ_rmse - chal_rmse:.6f}")
-          EOF
+      champion_path = Path("artifacts/model_metadata.json")
 
-      - name: Promote challenger to champion
-        run: python -m training.promotion
-        env:
-          PSEUDO_LABEL_LATEST_TS: ${{ inputs.pseudo_label_latest_ts }}
+      challenger_candidates = list(
+          Path("challenger_artifacts").rglob("challenger_metadata.json")
+      )
 
-      - name: Read new champion version
-        id: new_version
-        run: |
-          python - <<'EOF'
-          import json, os
-          from pathlib import Path
+      if not champion_path.exists():
+          print("ERROR: Champion metadata not found.")
+          sys.exit(1)
 
-          with Path("artifacts/model_metadata.json").open() as f:
-              meta = json.load(f)
+      if not challenger_candidates:
+          print("ERROR: Challenger metadata not found.")
+          print("\nDownloaded challenger files:")
+          for p in Path("challenger_artifacts").rglob("*"):
+              print(p)
+          sys.exit(1)
 
-          version = meta["version"]
-          rmse = meta["rmse"]
+      challenger_path = challenger_candidates[0]
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
-              gh_out.write(f"version={version}\n")
-              gh_out.write(f"rmse={rmse:.6f}\n")
+      print(f"Champion metadata   : {champion_path}")
+      print(f"Challenger metadata : {challenger_path}")
 
-          print(f"New champion: v{version}  RMSE={rmse:.6f}")
-          EOF
+      with champion_path.open() as f:
+          champion = json.load(f)
 
-      - name: Commit champion artifacts
-        run: |
-          set -e
+      with challenger_path.open() as f:
+          challenger = json.load(f)
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      champ_rmse = float(champion["rmse"])
+      chal_rmse = float(challenger["rmse"])
 
-          git add artifacts/model.pkl
-          git add artifacts/model_metadata.json
-          git add artifacts/feature_importance.json
-          git add artifacts/promotion_log.jsonl 2>/dev/null || true
+      print(
+          f"Safety check — Champion RMSE={champ_rmse:.6f}  "
+          f"Challenger RMSE={chal_rmse:.6f}"
+      )
 
-          if git diff --cached --quiet; then
-            echo "No champion artifact changes to commit."
-            exit 0
-          fi
-
-          NEW_RMSE=$(python - <<'PY'
-          import json
-          from pathlib import Path
-          with Path("artifacts/model_metadata.json").open() as f:
-              meta = json.load(f)
-          print(f"{float(meta['rmse']):.6f}")
-          PY
+      if chal_rmse >= champ_rmse:
+          print(
+              "SAFETY CHECK FAILED: Challenger RMSE is not better "
+              "than champion."
           )
+          sys.exit(1)
 
-          git commit -m "feat(mlops): promote challenger to champion v${{ steps.new_version.outputs.version }} [skip ci]" \
-            -m "RMSE improved: ${NEW_RMSE}" \
-            -m "Triggered by drift detection → pseudo-labeling → retraining → evaluation."
+      print(
+          f"✓ Safety check passed — challenger improves RMSE by "
+          f"{champ_rmse - chal_rmse:.6f}"
+      )
+      EOF
 
-          git push origin HEAD:main
+  # ------------------------------------------------------------------
+  # Run promotion logic
+  # ------------------------------------------------------------------
+  - name: Promote challenger to champion
+    run: python -m training.promotion
+    env:
+      PSEUDO_LABEL_LATEST_TS: ${{ inputs.pseudo_label_latest_ts }}
 
-      - name: Create model version tag
-        run: |
-          VERSION="v${{ steps.new_version.outputs.version }}"
-          TAG="model-${VERSION}"
-          git tag -a "$TAG" -m "SurgeCast champion model ${VERSION} — RMSE=${{ steps.new_version.outputs.rmse }}"
-          git push origin "$TAG"
+  # ------------------------------------------------------------------
+  # Read new version number
+  # ------------------------------------------------------------------
+  - name: Read new champion version
+    id: new_version
+    run: |
+      python - <<'EOF'
+      import json
+      import os
+      from pathlib import Path
 
-      - name: Promotion summary
-        run: |
-          echo "═══════════════════════════════════════════════"
-          echo "  SurgeCast Model Promotion Complete"
-          echo "═══════════════════════════════════════════════"
-          echo "  New champion version : v${{ steps.new_version.outputs.version }}"
-          echo "  Champion RMSE        : ${{ steps.new_version.outputs.rmse }}"
-          echo "  Retrain run ID       : ${{ inputs.retrain_run_id }}"
-          echo "  pseudo_label_std     : ${{ steps.new_version.outputs.rmse }}"
-          echo "  (next retraining cycle will use this as noise std)"
-          echo "═══════════════════════════════════════════════"
+      with Path("artifacts/model_metadata.json").open() as f:
+          meta = json.load(f)
+
+      version = meta["version"]
+      rmse = meta["rmse"]
+
+      with open(os.environ["GITHUB_OUTPUT"], "a") as gh_out:
+          gh_out.write(f"version={version}\n")
+          gh_out.write(f"rmse={rmse:.6f}\n")
+
+      print(f"New champion: v{version}  RMSE={rmse:.6f}")
+      EOF
+
+  # ------------------------------------------------------------------
+  # Commit updated champion artifacts
+  # ------------------------------------------------------------------
+  - name: Commit champion artifacts
+    run: |
+      set -e
+
+      git config user.name "github-actions[bot]"
+      git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      git add artifacts/model.pkl
+      git add artifacts/model_metadata.json
+      git add artifacts/feature_importance.json
+      git add artifacts/promotion_log.jsonl 2>/dev/null || true
+
+      if git diff --cached --quiet; then
+        echo "No champion artifact changes to commit."
+        exit 0
+      fi
+
+      NEW_RMSE=$(python - <<'PY'
+      import json
+      from pathlib import Path
+
+      with Path("artifacts/model_metadata.json").open() as f:
+          meta = json.load(f)
+
+      print(f"{float(meta['rmse']):.6f}")
+      PY
+      )
+
+      git commit \
+        -m "feat(mlops): promote challenger to champion v${{ steps.new_version.outputs.version }} [skip ci]" \
+        -m "RMSE improved: ${NEW_RMSE}" \
+        -m "Triggered by drift detection → pseudo-labeling → retraining → evaluation."
+
+      git push origin HEAD:main
+
+  # ------------------------------------------------------------------
+  # Create version tag
+  # ------------------------------------------------------------------
+  - name: Create model version tag
+    run: |
+      VERSION="v${{ steps.new_version.outputs.version }}"
+      TAG="model-${VERSION}"
+
+      git tag -a "$TAG" \
+        -m "SurgeCast champion model ${VERSION} — RMSE=${{ steps.new_version.outputs.rmse }}"
+
+      git push origin "$TAG"
+
+  # ------------------------------------------------------------------
+  # Summary
+  # ------------------------------------------------------------------
+  - name: Promotion summary
+    run: |
+      echo "═══════════════════════════════════════════════"
+      echo "  SurgeCast Model Promotion Complete"
+      echo "═══════════════════════════════════════════════"
+      echo "  New champion version : v${{ steps.new_version.outputs.version }}"
+      echo "  Champion RMSE        : ${{ steps.new_version.outputs.rmse }}"
+      echo "  Retrain run ID       : ${{ inputs.retrain_run_id }}"
+      echo "  pseudo_label_std     : ${{ steps.new_version.outputs.rmse }}"
+      echo "  (next retraining cycle will use this as noise std)"
+      echo "═══════════════════════════════════════════════"
