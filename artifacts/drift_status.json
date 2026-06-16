@@ -1,0 +1,6 @@
+{
+  "current_max_psi": 0.0,
+  "threshold": 0.25,
+  "drift_detected": false,
+  "status": "stable"
+}
