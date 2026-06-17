@@ -14,7 +14,7 @@
 
 **A production-grade, end-to-end MLOps platform for transportation demand surge prediction — demonstrating the full ML engineering lifecycle from training to governance.**
 
-[Live Demo (Frontend)](https://surgecast.vercel.app) · [Backend API](https://surgecast.onrender.com/docs) · [Report an Issue](https://github.com/adwaiths05/surge-predictor/issues)
+[Live Demo (Frontend)](https://surge-predictor.vercel.app/) · [Backend API](https://surge-predictor-backend.onrender.com/docs) · [Report an Issue](https://github.com/adwaiths05/surge-predictor/issues)
 
 </div>
 
